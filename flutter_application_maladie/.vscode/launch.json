@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "name": "flutter_application_maladie",
+            "request": "launch",
+            "type": "dart",
+            "args": ["--web-port=5000"]
+        },
+        {
+            "name": "flutter_application_maladie (profile mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile",
+            "args": ["--web-port=5000"]
+        },
+        {
+            "name": "flutter_application_maladie (release mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release",
+            "args": ["--web-port=5000"]
+        }
+    ]
+}
