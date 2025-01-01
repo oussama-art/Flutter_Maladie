@@ -2,50 +2,54 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'api_config.dart';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
-import './PlantDetailsScreen.dart'; // Import the PlantDetailsScreen
+import './PlantDetailsScreen.dart';
 
 class PlantScreen extends StatefulWidget {
-  const PlantScreen({super.key});
+  final String searchQuery; // Accept search query as a parameter
+
+  const PlantScreen({
+    super.key,
+    required this.searchQuery,
+  });
 
   @override
   State<PlantScreen> createState() => PlantScreenState();
 }
 
 class PlantScreenState extends State<PlantScreen> {
-  List<dynamic> _data = [];
+  List<dynamic> _plants = [];
   bool _isLoading = false;
+  String _searchType = "plant"; // Default search type
+  String _searchQuery = ""; // Current search query
 
-  Future<void> _fetchPlants() async {
+  Future<void> _fetchPlants({String? searchQuery, String? searchType}) async {
     setState(() {
       _isLoading = true;
     });
 
     String baseUrl = ApiConfig.baseUrl;
-    if (!kIsWeb && Platform.isAndroid) {
-      baseUrl = ApiConfig.baseUrl.replaceFirst('localhost', '10.0.2.2');
+    String url = "$baseUrl/api/plantes?page=0&size=10";
+
+    // Append `search` or `maladie` based on the selected search type
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      if (searchType == "plant") {
+        url += "&search=$searchQuery";
+      } else if (searchType == "maladie") {
+        url += "&maladie=$searchQuery";
+      }
     }
 
-    final String url = "$baseUrl/api/plantes";
-
     try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-      );
+      final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
-
-        if (data.containsKey('content')) {
-          setState(() {
-            _data = data['content'];
-          });
-        }
+        setState(() {
+          _plants = data['content'] ?? [];
+        });
       }
     } catch (_) {
-      // Handle errors if needed
+      // Handle errors
     } finally {
       setState(() {
         _isLoading = false;
@@ -66,42 +70,105 @@ class PlantScreenState extends State<PlantScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchPlants(); // Fetch plants on initialization
+    _fetchPlants(searchQuery: widget.searchQuery, searchType: _searchType);
   }
 
   @override
   Widget build(BuildContext context) {
-    return _isLoading
-        ? const Center(
-            child: CircularProgressIndicator(
-              color: Colors.green,
-            ),
-          )
-        : GridView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _data.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2, // Display 2 items per row
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 0.7, // Decreased ratio to make the cards taller
-            ),
-            itemBuilder: (context, index) {
-              final item = _data[index];
-              final String formattedImageUrl = _formatImageUrl(item['image']);
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PlantDetailsScreen(plantData: item),
+    return Column(
+      children: [
+        // Search Bar and Dropdown
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  onChanged: (query) {
+                    setState(() {
+                      _searchQuery = query;
+                    });
+                    _fetchPlants(searchQuery: query, searchType: _searchType);
+                  },
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search, color: Colors.green),
+                    hintText: 'Search by plant or maladie',
+                    filled: true,
+                    fillColor: Colors.green[50],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
-                  );
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              DropdownButton<String>(
+                value: _searchType,
+                onChanged: (value) {
+                  setState(() {
+                    _searchType = value!;
+                  });
+                  _fetchPlants(searchQuery: _searchQuery, searchType: _searchType);
                 },
-                child: _buildPlantCard(item['name'], formattedImageUrl),
-              );
-            },
-          );
+                items: const [
+                  DropdownMenuItem(
+                    value: "plant",
+                    child: Text("Plant"),
+                  ),
+                  DropdownMenuItem(
+                    value: "maladie",
+                    child: Text("Maladie"),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.green,
+                  ),
+                )
+              : _plants.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No plants found',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _plants.length,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2, // Display 2 items per row
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: 0.7,
+                      ),
+                      itemBuilder: (context, index) {
+                        final plant = _plants[index];
+                        final String formattedImageUrl = _formatImageUrl(plant['image'] ?? '');
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PlantDetailsScreen(plantData: plant),
+                              ),
+                            );
+                          },
+                          child: _buildPlantCard(
+                              utf8.decode(plant['name'].toString().codeUnits),
+                              formattedImageUrl),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
   }
 
   Widget _buildPlantCard(String name, String imageUrl) {
@@ -115,7 +182,7 @@ class PlantScreenState extends State<PlantScreen> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-            flex: 3, // Increase the flex for the image section
+            flex: 3,
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: Image.network(
@@ -131,11 +198,11 @@ class PlantScreenState extends State<PlantScreen> {
             ),
           ),
           Expanded(
-            flex: 1, // Use less space for the text
+            flex: 1,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               child: Text(
-                utf8.decode(name.codeUnits),
+                name,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,

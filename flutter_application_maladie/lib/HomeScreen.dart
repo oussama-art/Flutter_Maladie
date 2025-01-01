@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import './planteScreen.dart'; // Import the PlantScreen
-import './ArticleScreen.dart'; // Import the ArticleScreen
-import './ProfileScreen.dart'; // Import the ProfileScreen
+import './planteScreen.dart' as plante; // Alias the planteScreen import
+import './ArticleScreen.dart' as article; // Alias the ArticleScreen import
+import './ProfileScreen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,14 +11,33 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0; // Track the current tab
-  bool _isPlantTab = true; // Default to Plant tab
+  int _currentIndex = 0;
+  bool _isPlantTab = true;
+  bool _isWelcomeMessageShown = false;
+  String _searchQuery = "";
 
-  final List<Widget> _screens = [
-    const PlantScreen(), // Home tab shows PlantScreen
-    const ArticleScreen(), // Articles tab
-    const UserProfileScreen(), // Profile tab
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _showWelcomeMessage();
+  }
+
+  void _showWelcomeMessage() {
+    Future.delayed(Duration.zero, () {
+      if (!_isWelcomeMessageShown) {
+        setState(() {
+          _isWelcomeMessageShown = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Welcome to the app!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    });
+  }
 
   void _onTabTapped(int index) {
     setState(() {
@@ -30,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Let\'s find your plants'),
+        title: const Text('Let\'s find your plants or articles'),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
@@ -51,19 +70,6 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Search Bar
-                  TextField(
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search, color: Colors.green),
-                      hintText: 'Search',
-                      filled: true,
-                      fillColor: Colors.green[50],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 20),
                   // Toggle Tabs (Plant and Article)
                   Row(
@@ -86,13 +92,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Display Content Based on Selected Tab
                   Expanded(
                     child: _isPlantTab
-                        ? const PlantScreen() // Display PlantScreen
-                        : const ArticleScreen(), // Display ArticleScreen
+                        ? plante.PlantScreen( // Use the alias for PlantScreen
+                            searchQuery: _searchQuery,
+                          )
+                        : article.ArticleScreen( // Use the alias for ArticleScreen
+                           
+                          ),
                   ),
                 ],
               ),
             )
-          : _screens[_currentIndex], // Display ProfileScreen if currentIndex is 2
+          : _currentIndex == 1
+              ? const UserProfileScreen()
+              : const Center(
+                  child: Text('Profile Screen'),
+                ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
@@ -104,13 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             label: 'Home',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.favorite,
-              color: _currentIndex == 1 ? Colors.green : Colors.black,
-            ),
-            label: 'Favorite',
-          ),
+        
           BottomNavigationBarItem(
             icon: Icon(
               Icons.person,

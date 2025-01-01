@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'package:http/http.dart' as http;
-import './PlantDetailsScreen.dart';
+import 'dart:convert';
 import 'api_config.dart';
+import 'PlantDetailsScreen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ArticleDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> articleData;
@@ -15,7 +16,117 @@ class ArticleDetailsScreen extends StatefulWidget {
 
 class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
   final TextEditingController _commentController = TextEditingController();
-  List<String> _comments = []; // Simulated list of comments for demonstration
+  List<dynamic> _comments = [];
+  bool _isLoadingComments = false;
+  bool _isPostingComment = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchComments();
+  }
+
+  Future<void> _fetchComments() async {
+    setState(() {
+      _isLoadingComments = true;
+    });
+
+    final int articleId = widget.articleData['id'];
+    final String url = '${ApiConfig.baseUrl}/api/articles/commentaire/$articleId';
+
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        setState(() {
+          _comments = data['content'] ?? [];
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to fetch comments: ${response.body}')),
+        );
+      }
+    } catch (e) {
+      print('Error fetching comments: $e');
+    } finally {
+      setState(() {
+        _isLoadingComments = false;
+      });
+    }
+  }
+
+  Future<void> _postComment() async {
+    final String comment = _commentController.text.trim();
+    if (comment.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Comment cannot be empty!')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isPostingComment = true;
+    });
+
+    final int articleId = widget.articleData['id'];
+    final String url = '${ApiConfig.baseUrl}/api/articles/commentaire/$articleId';
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? token = prefs.getString('auth_token');
+
+      if (token == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Authentication required. Please log in.')),
+        );
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'commentaire': comment}),
+      );
+
+      if (response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Comment posted successfully!')),
+        );
+        _commentController.clear();
+        _fetchComments();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to post comment: ${utf8.decode(response.bodyBytes)}')),
+        );
+      }
+    } catch (e) {
+      print('Error posting comment: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error posting comment. Please try again.')),
+      );
+    } finally {
+      setState(() {
+        _isPostingComment = false;
+      });
+    }
+  }
+
+  String _decodeUtf8(String? text) {
+    return text != null ? utf8.decode(text.codeUnits) : '';
+  }
+
+  String _fixImageUrl(String imageUrl) {
+    return imageUrl.replaceFirst('http://localhost', 'http://10.0.2.2').trim();
+  }
 
   Future<Map<String, dynamic>> _fetchPlantDetails(int plantId) async {
     String baseUrl = ApiConfig.baseUrl;
@@ -24,35 +135,12 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        return jsonDecode(utf8.decode(response.bodyBytes));
       }
-    } catch (_) {
-      // Handle error
+    } catch (e) {
+      print('Error fetching plant details: $e');
     }
     return {};
-  }
-
-  String _decodeUtf8(String? text) {
-    return text != null ? utf8.decode(text.codeUnits) : '';
-  }
-
-  String _formatImageUrl(String rawUrl) {
-    final RegExp filenameRegex = RegExp(r'[\\/]([^\\/]+)$');
-    final Match? match = filenameRegex.firstMatch(rawUrl);
-    if (match != null) {
-      final String filename = match.group(1) ?? '';
-      return '${ApiConfig.baseUrl}/api/image/plante/$filename';
-    }
-    return '${ApiConfig.baseUrl}/api/image/plante/default.jpg';
-  }
-
-  void _addComment() {
-    if (_commentController.text.isNotEmpty) {
-      setState(() {
-        _comments.add(_commentController.text);
-        _commentController.clear();
-      });
-    }
   }
 
   @override
@@ -60,7 +148,8 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
     final List<dynamic> plantIds = widget.articleData['plante'] ?? [];
     final String articleTitle = _decodeUtf8(widget.articleData['title']);
     final String articleContent = _decodeUtf8(widget.articleData['content']);
-    final String articleImage = _formatImageUrl(widget.articleData['image'] ?? '');
+    final String articleImage = _fixImageUrl(widget.articleData['image'] ?? '');
+    final String articleDate = _decodeUtf8(widget.articleData['date'] ?? '');
 
     return Scaffold(
       appBar: AppBar(
@@ -68,13 +157,13 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
           articleTitle,
           style: const TextStyle(color: Colors.white),
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.green.shade800,
         elevation: 0,
       ),
       body: Stack(
         children: [
           Container(
-            color: Colors.white, // Ensures the entire screen has a white background
+            color: Colors.white,
           ),
           SingleChildScrollView(
             child: Padding(
@@ -115,9 +204,20 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
                   Text(
                     articleTitle,
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 26,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Article Date
+                  Text(
+                    'Published on: $articleDate',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -126,8 +226,8 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
                   Text(
                     articleContent,
                     style: const TextStyle(
-                      fontSize: 16,
-                      height: 1.5,
+                      fontSize: 18,
+                      height: 1.8,
                       color: Colors.black87,
                     ),
                   ),
@@ -137,7 +237,7 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
                   const Text(
                     'Linked Plants:',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.black,
                     ),
@@ -158,15 +258,14 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
                         } else {
                           final plant = snapshot.data!;
                           final String plantName = _decodeUtf8(plant['name']);
-                          final String plantImage = _formatImageUrl(plant['image'] ?? '');
+                          final String plantImage = _fixImageUrl(plant['image'] ?? '');
 
                           return Card(
-                            elevation: 5,
+                            elevation: 6,
                             margin: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            color: Colors.white, // Ensure the card has a white background
                             child: ListTile(
                               leading: ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
@@ -210,7 +309,7 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
                   const Text(
                     'Comments:',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.black,
                     ),
@@ -219,7 +318,20 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
 
                   ..._comments.map((comment) => ListTile(
                         leading: const Icon(Icons.person, color: Colors.green),
-                        title: Text(comment),
+                        title: Text(
+                          comment['commentaire'] ?? '',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        subtitle: Text(
+                          comment['date'] ?? '',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
                       )),
 
                   const SizedBox(height: 10),
@@ -238,7 +350,7 @@ class _ArticleDetailsScreenState extends State<ArticleDetailsScreen> {
                       ),
                       const SizedBox(width: 10),
                       ElevatedButton(
-                        onPressed: _addComment,
+                        onPressed: _isPostingComment ? null : _postComment,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           shape: RoundedRectangleBorder(
